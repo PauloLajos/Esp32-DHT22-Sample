@@ -1,11 +1,11 @@
-#ifndef WEBSERVERHANDLER_H
-#define WEBSERVERHANDLER_H
+#ifndef WEB_SERVER_HANDLER_H
+#define WEB_SERVER_HANDLER_H
+
+#define SERVERPORT 7281
 
 #include <Arduino.h>
-#include <WebServer.h>
 
-// publikus függvények
-void webserver_init(uint16_t port);
-void webserver_handle();
+void setupWebServer();
+void handleWebServer();
 
 #endif

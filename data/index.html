@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>DHT22 Napi Monitor</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+    }
+    #chart-container {
+      width: 95vw;   /* majdnem teljes böngésző szélesség */
+      height: 80vh;  /* a böngésző magasság 80%-a */
+      margin: auto;
+    }
+    canvas {
+      width: 100% !important;
+      height: 100% !important;
+    }
+  </style>
+</head>
+<body>
+  <h2>DHT22 Napi Monitor</h2>
+  <div id="chart-container">
+    <canvas id="dhtChart"></canvas>
+  </div>
+
+  <script>
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const midnightStart = today.getTime();
+    const midnightEnd = midnightStart + 24 * 60 * 60 * 1000;
+
+    const ctx = document.getElementById('dhtChart').getContext('2d');
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        datasets: [
+          {
+            label: 'Hőmérséklet (°C)',
+            data: [],
+            borderColor: 'red',
+            borderWidth: 2,
+            pointRadius: 0,
+            fill: false
+          },
+          {
+            label: 'Páratartalom (%)',
+            data: [],
+            borderColor: 'blue',
+            borderWidth: 2,
+            pointRadius: 0,
+            fill: false
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,  // fontos: így engedi kitölteni a konténert
+        animation: false,
+        scales: {
+          x: {
+            type: 'time',
+            time: {
+              unit: 'hour',
+              tooltipFormat: 'HH:mm:ss',
+              displayFormats: {
+                hour: 'HH:mm'
+              }
+            },
+            min: midnightStart,
+            max: midnightEnd,
+            title: { display: true, text: 'Idő (óra:perc)' }
+          },
+          y: {
+            title: { display: true, text: 'Érték' }
+          }
+        }
+      }
+    });
+
+    function fetchData() {
+      fetch('/data')
+        .then(res => res.json())
+        .then(data => {
+          const now = new Date();
+          chart.data.datasets[0].data.push({ x: now, y: data.temperature });
+          chart.data.datasets[1].data.push({ x: now, y: data.humidity });
+          chart.update();
+        })
+        .catch(err => console.error(err));
+    }
+
+    setInterval(fetchData, 3000);
+  </script>
+</body>
+</html>

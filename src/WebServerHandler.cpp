@@ -1,91 +1,94 @@
 #include "WebServerHandler.h"
 #include <WiFi.h>
-#include "DHTSensor.h"
-#include "wifi_config.h"
+#include <WebServer.h>
+#include <FS.h>
+#include <SPIFFS.h>
+#include "SensorHandler.h"
+#include "WiFiConfig.h"
+#include <vector>
 
-static WebServer* server = nullptr;   // dinamikusan inicializáljuk porttal
+WebServer server(SERVERPORT);
 
-// HTML oldal
+String loadFile(const char* path) {
+  Serial.print("Fájl megnyitása: ");
+  Serial.println(path);
+
+  if (!SPIFFS.exists(path)) {
+    Serial.println("Nincs ilyen fájl a SPIFFS-ben!");
+    return String("Hiba: nincs index.html a SPIFFS-ben!");
+  }
+
+  File file = SPIFFS.open(path, "r");
+  if (!file) {
+    Serial.println("Nem sikerült megnyitni a fájlt!");
+    return String("Hiba: fájl megnyitási hiba.");
+  }
+
+  String content = file.readString();
+  file.close();
+  Serial.println("Fájl sikeresen beolvasva!");
+  return content;
+}
+
 void handleRoot() {
-  String html = R"rawliteral(
-  <!DOCTYPE html>
-  <html>
-  <head>
-    <meta charset='utf-8'>
-    <title>DHT WebServer</title>
-    <style>
-      body { font-family: Arial; margin: 20px; }
-      h1 { color: #2c3e50; }
-      .data { margin: 10px 0; font-size: 18px; }
-    </style>
-    <script>
-      async function updateData() {
-        let response = await fetch('/data');
-        let json = await response.json();
-        document.getElementById('status').innerText = json.status;
-        document.getElementById('humidity').innerText = json.humidity + ' %';
-        document.getElementById('tempC').innerText = json.tempC + ' °C';
-        document.getElementById('tempF').innerText = json.tempF + ' °F';
-        document.getElementById('heatC').innerText = json.heatC + ' °C';
-        document.getElementById('heatF').innerText = json.heatF + ' °F';
-      }
-      setInterval(updateData, 3000);
-      window.onload = updateData;
-    </script>
-  </head>
-  <body>
-    <h1>DHT22 mérési adatok</h1>
-    <div class="data"><b>Status:</b> <span id="status">--</span></div>
-    <div class="data"><b>Páratartalom:</b> <span id="humidity">--</span></div>
-    <div class="data"><b>Hőmérséklet (C):</b> <span id="tempC">--</span></div>
-    <div class="data"><b>Hőmérséklet (F):</b> <span id="tempF">--</span></div>
-    <div class="data"><b>Hőérzet (C):</b> <span id="heatC">--</span></div>
-    <div class="data"><b>Hőérzet (F):</b> <span id="heatF">--</span></div>
-  </body>
-  </html>
-  )rawliteral";
-
-  server->send(200, "text/html", html);
+  File file = SPIFFS.open("/index.html", "r");
+  if (!file) {
+    server.send(500, "text/plain", "index.html not found");
+    return;
+  }
+  server.streamFile(file, "text/html");
+  file.close();
 }
 
-// JSON endpoint
 void handleData() {
-  String json = "{";
-  json += "\"status\":\"" + dht_getStatus() + "\",";
-  json += "\"humidity\":" + String(dht_getHumidity(), 1) + ",";
-  json += "\"tempC\":" + String(dht_getTemperature(), 1) + ",";
-  json += "\"tempF\":" + String(dht_getTemperatureF(), 1) + ",";
-  json += "\"heatC\":" + String(dht_getHeatIndexC(), 1) + ",";
-  json += "\"heatF\":" + String(dht_getHeatIndexF(), 1);
-  json += "}";
-  server->send(200, "application/json", json);
+  auto& data = getDailyData();
+  String json = "[";
+  for (size_t i = 0; i < data.size(); i++) {
+    json += "{";
+    json += "\"time\":" + String(data[i].timestamp) + ",";
+    json += "\"temperature\":" + String(data[i].temperature, 1) + ",";
+    json += "\"humidity\":" + String(data[i].humidity, 1);
+    json += "}";
+    if (i < data.size() - 1) json += ",";
+  }
+  json += "]";
+  server.send(200, "application/json", json);
 }
 
-// inicializálás
-void webserver_init(uint16_t port) {
-  server = new WebServer(port);
+void handleNotFound() {
+  Serial.print("Ismeretlen kérés: ");
+  Serial.println(server.uri());
+  server.send(404, "text/plain", "404: " + server.uri());
+}
 
-  Serial.println("WiFi-hez csatlakozás...");
+void setupWebServer() {
+  if(!SPIFFS.begin(true)) {
+    Serial.println("SPIFFS csatolás sikertelen!");
+    return;
+  }
+
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
+  Serial.print("Csatlakozás WiFi-re");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-  Serial.println();
-  Serial.print("Csatlakozva. IP cím: ");
-  Serial.println(WiFi.localIP());
+  Serial.println("\nCsatlakozva: " + WiFi.localIP().toString());
 
-  server->on("/", handleRoot);
-  server->on("/data", handleData);
+  server.on("/", handleRoot);
+  server.on("/data", handleData);
+  server.on("/favicon.ico", []() { server.send(204); }); // favicon tiltás
+  server.onNotFound(handleNotFound);   // <<< EZ FONTOS!
 
-  server->begin();
-  Serial.printf("Webszerver elindult a %d porton\n", port);
+  server.begin();
+  Serial.println("Webserver fut a " + String(SERVERPORT) + " porton.");
 }
 
-// fő ciklusból hívható
-void webserver_handle() {
-  if (server) {
-    server->handleClient();
+void handleWebServer() {
+  static unsigned long lastRead = 0;
+  if (millis() - lastRead > 3000) {
+    lastRead = millis();
+    readSensor(); // 3 másodpercenként olvasás
   }
+  server.handleClient();
 }
