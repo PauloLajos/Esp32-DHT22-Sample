@@ -1,9 +1,7 @@
 #include <Arduino.h>
-#include "DHTesp.h"
+#include "DHTSensor.h"
 
-#define DHTPIN 22       // Digital pin connected to the DHT sensor
-
-DHTesp dht;
+#define DHTPIN 22
 
 void setup() {
   Serial.begin(9600);
@@ -11,25 +9,21 @@ void setup() {
   Serial.println();
   Serial.println("Status\tHumidity (%)\tTemperature (C)\t(F)\tHeatIndex (C)\t(F)");
 
-  dht.setup(DHTPIN, DHTesp::DHT22); // Connect DHT sensor to GPIO 22
+  dht_init(DHTPIN, DHTesp::DHT22);
 }
 
 void loop() {
-delay(dht.getMinimumSamplingPeriod());
+  delay(2000); // mérési ciklus
 
-  float humidity = dht.getHumidity();
-  float temperature = dht.getTemperature();
-
-  Serial.print(dht.getStatusString());
+  Serial.print(dht_getStatus());
   Serial.print("\t");
-  Serial.print(humidity, 1);
+  Serial.print(dht_getHumidity(), 1);
   Serial.print("\t\t");
-  Serial.print(temperature, 1);
+  Serial.print(dht_getTemperature(), 1);
   Serial.print("\t\t");
-  Serial.print(dht.toFahrenheit(temperature), 1);
+  Serial.print(dht_getTemperatureF(), 1);
   Serial.print("\t\t");
-  Serial.print(dht.computeHeatIndex(temperature, humidity, false), 1);
+  Serial.print(dht_getHeatIndexC(), 1);
   Serial.print("\t\t");
-  Serial.println(dht.computeHeatIndex(dht.toFahrenheit(temperature), humidity, true), 1);
-  delay(2000);
+  Serial.println(dht_getHeatIndexF(), 1);
 }
